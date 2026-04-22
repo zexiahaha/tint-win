@@ -5,7 +5,7 @@ LRESULT Win32MainWindowCallback(
                                 HWND Window,
                                 UINT MEssage,
                                 WPARAM WParam,
-                                LPARAM LParam,
+                                LPARAM LParam
                                 ) {
                                     LRESULT Result = 0;
                                     return Result;
@@ -14,7 +14,7 @@ LRESULT Win32MainWindowCallback(
 int WinMain(HINSTANCE MainHInstance, HINSTANCE MainHInstancePrev, PSTR cmdline, int cmdshow)
 {
     WNDCLASS WndClass = {};
-    WndClass.lpfnWndProc = WindowProc;
+    WndClass.lpfnWndProc = Win32MainWindowCallback;
     WndClass.hInstance = MainHInstance;
     WndClass.lpszClassName = "TintWindowClass";
     
