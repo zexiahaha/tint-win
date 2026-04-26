@@ -53,15 +53,15 @@ typedef struct tint_app_state
 } tint_app_state;
 
 static HWND TintCreateGroupBox(
-                   HWND Parent,
-                   HINSTANCE Instance,
-                   int Id,
-                   LPCWSTR Title,
-                   int X,
-                   int Y,
-                   int Width,
-                   int Height
-                   )
+                               HWND Parent,
+                               HINSTANCE Instance,
+                               int Id,
+                               LPCWSTR Title,
+                               int X,
+                               int Y,
+                               int Width,
+                               int Height
+                               )
 {
     return CreateWindowExW(
                            0,
@@ -77,15 +77,15 @@ static HWND TintCreateGroupBox(
 }
 
 static HWND TintCreateButton(
-                 HWND Parent,
-                 HINSTANCE Instance,
-                 int Id,
-                 LPCWSTR Text,
-                 int X,
-                 int Y,
-                 int Width,
-                 int Height
-                 )
+                             HWND Parent,
+                             HINSTANCE Instance,
+                             int Id,
+                             LPCWSTR Text,
+                             int X,
+                             int Y,
+                             int Width,
+                             int Height
+                             )
 {
     return CreateWindowExW(
                            0,
@@ -101,16 +101,16 @@ static HWND TintCreateButton(
 }
 
 static HWND TintCreateStatic(
-                 HWND Parent,
-                 HINSTANCE Instance,
-                 int Id,
-                 LPCWSTR Text,
-                 DWORD Style,
-                 int X,
-                 int Y,
-                 int Width,
-                 int Height
-                 )
+                             HWND Parent,
+                             HINSTANCE Instance,
+                             int Id,
+                             LPCWSTR Text,
+                             DWORD Style,
+                             int X,
+                             int Y,
+                             int Width,
+                             int Height
+                             )
 {
     return CreateWindowExW(
                            0,
@@ -190,11 +190,80 @@ static void TintApplyReadOnlySlotStyle(
                  );
 }
 
+static void TintSelectFakeWindow(
+                                 tint_app_state *State,
+                                 int SelectionIndex
+                                 )
+{
+    if (State == NULL)
+    {
+        return;
+    }
+
+    switch (SelectionIndex)
+    {
+        case 0:
+        {
+            TintSetSelectionText(State, L"Untitled - Notepad", L"notepad.exe");
+            TintSetStatusText(State, L"Status: Selected Notepad");
+            break;
+        }
+
+        case 1:
+        {
+            TintSetSelectionText(State, L"Calculator", L"calc.exe");
+            TintSetStatusText(State, L"Status: Selected Calculator");
+            break;
+        }
+
+        case 2:
+        {
+            TintSetSelectionText(State, L"Explorer", L"explorer.exe");
+            TintSetStatusText(State, L"Status: Selected Explorer");
+            break;
+        }
+        case 3:
+        {
+            TintSetSelectionText(State, L"Paint", L"mspaint.exe");
+            TintSetStatusText(State, L"Status: Selected Paint");
+            break;
+        }
+        default:
+        {
+            TintSetSelectionText(State, L"(none)", L"(none)");
+            TintSetStatusText(State, L"Status: No selection");
+            break;
+        }
+    }
+}
+
+static void TintSetOpacityFromSlider(
+                                     tint_app_state *State
+                                     )
+{
+    wchar_t StatusText[64];
+    int Percent;
+    if (State == NULL)
+    {
+        return;
+    }
+    Percent = (int)SendMessageW(
+                                    State->opacity_slider,
+                                    TBM_GETPOS,
+                                    0,
+                                    0
+                                    );
+    TintSetOpacityPercent(State, Percent);
+   
+    wsprintfW(StatusText, L"Status: Opacity %d%%", Percent);
+    TintSetStatusText(State, StatusText);
+}
+
 static void TintCreateMainLayout (
-                      HWND Window,
-                      HINSTANCE Instance,
-                      tint_app_state *State
-                      )
+                                  HWND Window,
+                                  HINSTANCE Instance,
+                                  tint_app_state *State
+                                  )
 {
     int client_left = TINT_MARGIN;
     int client_top = TINT_MARGIN;
@@ -385,25 +454,83 @@ static void TintCreateMainLayout (
                                                  );
 
     State->status_bar = CreateWindowExW(
-                                       0,
-                                       STATUSCLASSNAMEW,
-                                       L"Status: Ready",
-                                       WS_CHILD | WS_VISIBLE,
-                                       0, 0, 0, 0,
-                                       Window,
-                                       (HMENU) (INT_PTR)IDC_STATUS_BAR,
-                                       Instance,
-                                       NULL
-                                       );
+                                        0,
+                                        STATUSCLASSNAMEW,
+                                        L"Status: Ready",
+                                        WS_CHILD | WS_VISIBLE,
+                                        0, 0, 0, 0,
+                                        Window,
+                                        (HMENU) (INT_PTR)IDC_STATUS_BAR,
+                                        Instance,
+                                        NULL
+                                        );
+
+    SendMessageW(
+                 State->opacity_slider,
+                 TBM_SETRANGE,
+                 TRUE,
+                 MAKELONG(
+                          TINT_MIN_OPACITY_PERCENT,
+                          TINT_MAX_OPACITY_PERCENT
+                          )
+                 );
+
+    SendMessageW(
+                 State->opacity_slider,
+                 TBM_SETPOS,
+                 TRUE,
+                 TINT_MAX_OPACITY_PERCENT
+                 );
+
+    TintSetSelectionText(
+                         State,
+                         L"(none)",
+                         L"(none)"
+                         );
+    TintSetOpacityPercent(
+                          State,
+                          TINT_MAX_OPACITY_PERCENT
+                          );
+    TintSetStatusText(State, L"Status: Ready");
+
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Untitled - Notepad - notepad.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Calculator - calc.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Explorer - explorer.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Paint - mspaint.exe"
+                 );
+
+    SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
+    TintSetSelectionText(State, L"Untitled - Notepad", L"notepad.exe");
 }
 
 
+
+
 LRESULT CALLBACK Win32MainWindowCallback(
-                                HWND Window,
-                                UINT Message,
-                                WPARAM WParam,
-                                LPARAM LParam
-                                )
+                                         HWND Window,
+                                         UINT Message,
+                                         WPARAM WParam,
+                                         LPARAM LParam
+                                         )
 {
     LRESULT Result = 0;
     switch (Message)
@@ -411,6 +538,53 @@ LRESULT CALLBACK Win32MainWindowCallback(
         case WM_DESTROY:
         {
             PostQuitMessage(0);
+            break;
+        }
+        case WM_COMMAND:
+        {
+            tint_app_state *State = (tint_app_state *)GetWindowLongPtrW(Window, GWLP_USERDATA);
+            if (LOWORD(WParam) == IDC_WINDOWS_LIST && HIWORD(WParam) == LBN_SELCHANGE)
+            {
+                
+                if (State != NULL)
+                {
+                    
+                    int SelectionIndex = (int)SendMessageW(
+                                                           State->windows_list,
+                                                           LB_GETCURSEL,
+                                                           0,
+                                                           0
+                                                           );
+                    TintSelectFakeWindow(State, SelectionIndex);
+                }
+            } else if (LOWORD(WParam) == IDC_REFRESH_BUTTON)
+            {
+                if (State != NULL)
+                {
+                    TintSetStatusText(State, L"Status: Refresh clicked");
+                }
+            } else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)
+            {
+                if (State != NULL)
+                {
+                    TintSetStatusText(State, L"Status: Restore current clicked");
+                }
+            } else if (LOWORD(WParam) == IDC_RESTORE_ALL_BUTTON)
+            {
+                if (State != NULL)
+                {
+                    TintSetStatusText(State, L"Status: Restore all clicked");
+                }
+            }
+            break;
+        }
+        case WM_HSCROLL:
+        {
+            tint_app_state *State = (tint_app_state *)GetWindowLongPtrW(Window, GWLP_USERDATA);
+            if (State != NULL && (HWND)LParam == State->opacity_slider)
+            {
+                TintSetOpacityFromSlider(State);
+            }
             break;
         }
         case WM_CREATE:
