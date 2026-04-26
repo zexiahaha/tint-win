@@ -52,8 +52,7 @@ typedef struct tint_app_state
     int current_opacity_percent;
 } tint_app_state;
 
-static HWND
-TintCreateGroupBox(
+static HWND TintCreateGroupBox(
                    HWND Parent,
                    HINSTANCE Instance,
                    int Id,
@@ -77,8 +76,7 @@ TintCreateGroupBox(
                            );
 }
 
-static HWND
-TintCreateButton(
+static HWND TintCreateButton(
                  HWND Parent,
                  HINSTANCE Instance,
                  int Id,
@@ -102,8 +100,7 @@ TintCreateButton(
                            );
 }
 
-static HWND
-TintCreateStatic(
+static HWND TintCreateStatic(
                  HWND Parent,
                  HINSTANCE Instance,
                  int Id,
@@ -128,8 +125,72 @@ TintCreateStatic(
                            );
 }
 
-static void
-TintCreateMainLayout (
+static void TintSetSelectionText(
+                                 tint_app_state *State,
+                                 LPCWSTR Title,
+                                 LPCWSTR Process
+                                 )
+{
+    if (State == NULL)
+    {
+        return;
+    }
+
+    SetWindowTextW(State->title_value, Title);
+    SetWindowTextW(State->process_value, Process);
+}
+
+static void TintSetStatusText(
+                              tint_app_state *State,
+                              LPCWSTR Text
+                              )
+{
+    if (State == NULL || State->status_bar == NULL)
+    {
+        return;
+    }
+    SendMessageW(State->status_bar, SB_SETTEXTW, 0, (LPARAM)Text);
+}
+
+static void TintSetOpacityPercent(
+                                  tint_app_state *State,
+                                  int Percent
+                                  )
+{
+    wchar_t Buffer[16];
+
+    if (State == NULL)
+    {
+        return;
+    }
+
+    State->current_opacity_percent = Percent;
+    wsprintfW(Buffer, L"%d%%", Percent);
+    SetWindowTextW(State->opacity_value, Buffer);
+}
+
+static void TintApplyReadOnlySlotStyle(
+                                       HWND Control
+                                       )
+{
+    LONG_PTR Style;
+    LONG_PTR ExStyle;
+
+    Style = GetWindowLongPtrW(Control, GWL_STYLE);
+    ExStyle = GetWindowLongPtrW(Control, GWL_EXSTYLE);
+
+    SetWindowLongPtrW(Control, GWL_STYLE, Style | SS_SUNKEN);
+    SetWindowLongPtrW(Control, GWL_EXSTYLE, ExStyle | WS_EX_STATICEDGE);
+
+    SetWindowPos(
+                 Control,
+                 NULL,
+                 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED
+                 );
+}
+
+static void TintCreateMainLayout (
                       HWND Window,
                       HINSTANCE Instance,
                       tint_app_state *State
@@ -213,6 +274,8 @@ TintCreateMainLayout (
                                           20
                                           );
 
+    TintApplyReadOnlySlotStyle(State->title_value);
+
     TintCreateStatic(
                      Window,
                      Instance,
@@ -236,6 +299,7 @@ TintCreateMainLayout (
                                             206,
                                             20
                                             );
+    TintApplyReadOnlySlotStyle(State->process_value);
 
     State->opacity_group = TintCreateGroupBox(
                                               Window,
@@ -387,7 +451,12 @@ BOOL InitCC(void)
     return InitCommonControlsEx(&CommonControlClass);
 }
 
-int WINAPI wWinMain(HINSTANCE MainHInstance, HINSTANCE MainHInstancePrev, PWSTR cmdline, int cmdshow)
+int WINAPI wWinMain(
+                    HINSTANCE MainHInstance,
+                    HINSTANCE MainHInstancePrev,
+                    PWSTR cmdline,
+                    int cmdshow
+                    )
 {
     (void)MainHInstancePrev;
     (void)cmdline;
