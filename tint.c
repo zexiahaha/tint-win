@@ -32,6 +32,17 @@ enum ControlIds
 #define TINT_STATUS_HEIGHT 24
 #define TINT_MIN_OPACITY_PERCENT 20
 #define TINT_MAX_OPACITY_PERCENT 100
+#define TINT_MAX_WINDOWS 512
+#define TINT_MAX_TITLE_LENGTH 260
+#define TINT_MAX_PROCESS_NAME_LENGTH 260
+
+
+typedef struct tint_window_item
+{
+    HWND hwnd;
+    wchar_t title[TINT_MAX_TITLE_LENGTH];
+    wchar_t process_name[TINT_MAX_PROCESS_NAME_LENGTH];
+} tint_window_item;
 
 typedef struct tint_app_state
 {
@@ -49,8 +60,11 @@ typedef struct tint_app_state
     HWND restore_current_button;
     HWND restore_all_button;
     HWND status_bar;
+    tint_window_item windows[TINT_MAX_WINDOWS];
+    int window_count;
     int current_opacity_percent;
 } tint_app_state;
+
 
 static HWND TintCreateGroupBox(
                                HWND Parent,
@@ -243,18 +257,21 @@ static void TintSetOpacityFromSlider(
 {
     wchar_t StatusText[64];
     int Percent;
+    
     if (State == NULL)
     {
         return;
     }
+    
     Percent = (int)SendMessageW(
-                                    State->opacity_slider,
-                                    TBM_GETPOS,
-                                    0,
-                                    0
-                                    );
+                                State->opacity_slider,
+                                TBM_GETPOS,
+                                0,
+                                0
+                                );
+    
     TintSetOpacityPercent(State, Percent);
-   
+
     wsprintfW(StatusText, L"Status: Opacity %d%%", Percent);
     TintSetStatusText(State, StatusText);
 }
@@ -557,19 +574,22 @@ LRESULT CALLBACK Win32MainWindowCallback(
                                                            );
                     TintSelectFakeWindow(State, SelectionIndex);
                 }
-            } else if (LOWORD(WParam) == IDC_REFRESH_BUTTON)
+            }
+            else if (LOWORD(WParam) == IDC_REFRESH_BUTTON)
             {
                 if (State != NULL)
                 {
                     TintSetStatusText(State, L"Status: Refresh clicked");
                 }
-            } else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)
+            }
+            else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)
             {
                 if (State != NULL)
                 {
                     TintSetStatusText(State, L"Status: Restore current clicked");
                 }
-            } else if (LOWORD(WParam) == IDC_RESTORE_ALL_BUTTON)
+            }
+            else if (LOWORD(WParam) == IDC_RESTORE_ALL_BUTTON)
             {
                 if (State != NULL)
                 {
