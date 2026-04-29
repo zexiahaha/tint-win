@@ -2,6 +2,7 @@
 #define _UNICODE
 #include <windows.h>
 #include <commctrl.h>
+#include <wchar.h>
 
 enum ControlIds
 {
@@ -40,6 +41,7 @@ enum ControlIds
 typedef struct tint_window_item
 {
     HWND hwnd;
+    DWORD pid;
     wchar_t title[TINT_MAX_TITLE_LENGTH];
     wchar_t process_name[TINT_MAX_PROCESS_NAME_LENGTH];
 } tint_window_item;
@@ -214,41 +216,98 @@ static void TintSelectFakeWindow(
         return;
     }
 
-    switch (SelectionIndex)
+    if (SelectionIndex < 0 || SelectionIndex >= State->window_count)
     {
-        case 0:
-        {
-            TintSetSelectionText(State, L"Untitled - Notepad", L"notepad.exe");
-            TintSetStatusText(State, L"Status: Selected Notepad");
-            break;
-        }
-
-        case 1:
-        {
-            TintSetSelectionText(State, L"Calculator", L"calc.exe");
-            TintSetStatusText(State, L"Status: Selected Calculator");
-            break;
-        }
-
-        case 2:
-        {
-            TintSetSelectionText(State, L"Explorer", L"explorer.exe");
-            TintSetStatusText(State, L"Status: Selected Explorer");
-            break;
-        }
-        case 3:
-        {
-            TintSetSelectionText(State, L"Paint", L"mspaint.exe");
-            TintSetStatusText(State, L"Status: Selected Paint");
-            break;
-        }
-        default:
-        {
-            TintSetSelectionText(State, L"(none)", L"(none)");
-            TintSetStatusText(State, L"Status: No selection");
-            break;
-        }
+        TintSetSelectionText(State, L"(none)", L"(none)");
+        TintSetStatusText(State, L"Status: No selection");
+        return;
     }
+
+    wchar_t buffer[256];
+    swprintf_s(buffer, 256,  L"Status: Selected %s",  State->windows[SelectionIndex].process_name);
+
+    TintSetSelectionText(State, State->windows[SelectionIndex].title, State->windows[SelectionIndex].process_name);
+    TintSetStatusText(State, buffer);
+
+}
+
+static void TintClearFakeWindows(
+                                 tint_app_state *State
+                                 )
+{
+    if (State == NULL)
+    {
+        return;
+    }
+    
+        
+    SendMessageW(
+                 State->windows_list,
+                 LB_RESETCONTENT,
+                 0,
+                 0
+                 );
+    ZeroMemory(State->windows, sizeof(State->windows));
+    State->window_count = 0;
+
+    
+    TintSetSelectionText(State, L"(none)", L"(none)");
+    TintSetStatusText(State, L"Status: No selection");
+}
+
+static void TintLoadFakeWindows(
+                                tint_app_state *State
+                                )
+{
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Untitled - Notepad - notepad.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Calculator - calc.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Explorer - explorer.exe"
+                 );
+    SendMessageW(
+                 State->windows_list,
+                 LB_ADDSTRING,
+                 0,
+                 (LPARAM)L"Paint - mspaint.exe"
+                 );
+
+    State->windows[0].hwnd = NULL;
+    State->windows[0].pid = 0;
+    lstrcpyW(State->windows[0].title, L"Untitled - Notepad");
+    lstrcpyW(State->windows[0].process_name, L"notepad.exe");
+
+    
+    State->windows[1].hwnd = NULL;
+    State->windows[1].pid = 0;
+    lstrcpyW(State->windows[1].title, L"Calculator");
+    lstrcpyW(State->windows[1].process_name, L"calc.exe");
+    
+    State->windows[2].hwnd = NULL;
+    State->windows[2].pid = 0;
+    lstrcpyW(State->windows[2].title, L"Explorer");
+    lstrcpyW(State->windows[2].process_name, L"explorer.exe");
+    
+    State->windows[3].hwnd = NULL;
+    State->windows[3].pid = 0;
+    lstrcpyW(State->windows[3].title, L"Paint");
+    lstrcpyW(State->windows[3].process_name, L"mspaint.exe");
+
+    State->window_count = 4;
+    SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
+    TintSelectFakeWindow(State, 0);
 }
 
 static void TintSetOpacityFromSlider(
@@ -275,6 +334,17 @@ static void TintSetOpacityFromSlider(
     wsprintfW(StatusText, L"Status: Opacity %d%%", Percent);
     TintSetStatusText(State, StatusText);
 }
+
+static BOOL TintShouldIncludeWindow(HWND Window)
+{
+    if (Window == NULL || !IsWindowVisible(Window) || GetWindowTextLengthW(Window) == 0)
+    {
+        return FALSE;
+    }
+
+    return TRUE;
+}
+
 
 static void TintCreateMainLayout (
                                   HWND Window,
@@ -510,33 +580,7 @@ static void TintCreateMainLayout (
                           );
     TintSetStatusText(State, L"Status: Ready");
 
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Untitled - Notepad - notepad.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Calculator - calc.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Explorer - explorer.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Paint - mspaint.exe"
-                 );
-
-    SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
-    TintSetSelectionText(State, L"Untitled - Notepad", L"notepad.exe");
+    TintLoadFakeWindows(State);
 }
 
 
@@ -577,9 +621,12 @@ LRESULT CALLBACK Win32MainWindowCallback(
             }
             else if (LOWORD(WParam) == IDC_REFRESH_BUTTON)
             {
+                
                 if (State != NULL)
                 {
-                    TintSetStatusText(State, L"Status: Refresh clicked");
+                    TintClearFakeWindows(State);
+                    TintLoadFakeWindows(State);
+                    TintSetStatusText(State, L"Status: Window list refreshed");
                 }
             }
             else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)
