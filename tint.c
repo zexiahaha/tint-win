@@ -345,6 +345,30 @@ static BOOL TintShouldIncludeWindow(HWND Window)
     return TRUE;
 }
 
+static void TintGetProcessName(
+                               DWORD ProcessId,
+                               wchar_t *Buffer,
+                               DWORD BufferCount
+                               )
+{
+    if (Buffer == NULL || BufferCount == 0)
+    {
+        return;
+    }
+
+    Buffer[0] = L'\0';
+
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ProcessId);
+    if (process == NULL)
+    {
+        wcscpy_s(Buffer, BufferCount, L"<unknown>");
+        return;
+    }
+    
+    wcscpy_s(Buffer, BufferCount, L"<unknown>");
+    CloseHandle(process);
+}
+
 
 static void TintCreateMainLayout (
                                   HWND Window,
