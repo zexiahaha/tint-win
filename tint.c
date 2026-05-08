@@ -36,6 +36,7 @@ enum ControlIds
 #define TINT_MAX_WINDOWS 512
 #define TINT_MAX_TITLE_LENGTH 260
 #define TINT_MAX_PROCESS_NAME_LENGTH 260
+#define TINT_MAX_MODIFIED_WINDOWS 128
 
 
 typedef struct tint_window_item
@@ -45,6 +46,13 @@ typedef struct tint_window_item
     wchar_t title[TINT_MAX_TITLE_LENGTH];
     wchar_t process_name[TINT_MAX_PROCESS_NAME_LENGTH];
 } tint_window_item;
+
+typedef struct tint_modified_window
+{
+    HWND hwnd;
+    LONG_PTR original_ex_style;
+    BOOL in_use;
+} tint_modified_window;
 
 typedef struct tint_app_state
 {
@@ -64,6 +72,8 @@ typedef struct tint_app_state
     HWND status_bar;
     tint_window_item windows[TINT_MAX_WINDOWS];
     int window_count;
+    tint_modified_window modified_windows[TINT_MAX_MODIFIED_WINDOWS];
+    int modified_window_count;
     int current_opacity_percent;
 } tint_app_state;
 
@@ -206,10 +216,10 @@ static void TintApplyReadOnlySlotStyle(
                  );
 }
 
-static void TintSelectFakeWindow(
-                                 tint_app_state *State,
-                                 int SelectionIndex
-                                 )
+static void TintSelectWindow(
+                             tint_app_state *State,
+                             int SelectionIndex
+                             )
 {
     if (State == NULL)
     {
@@ -223,6 +233,13 @@ static void TintSelectFakeWindow(
         return;
     }
 
+    if (!IsWindow(State->windows[SelectionIndex].hwnd))
+    {
+        TintSetSelectionText(State, L"(none)", L"(none)");
+        TintSetStatusText(State, L"Status: Selected window no longer exists; refresh the list");
+        return;
+    }
+
     wchar_t buffer[256];
     swprintf_s(buffer, 256,  L"Status: Selected %s",  State->windows[SelectionIndex].process_name);
 
@@ -231,84 +248,36 @@ static void TintSelectFakeWindow(
 
 }
 
-static void TintClearFakeWindows(
-                                 tint_app_state *State
-                                 )
+static tint_window_item *TintGetSelectedWindow(tint_app_state *State)
 {
+    LRESULT SelectionIndex;
+
     if (State == NULL)
     {
-        return;
+        return NULL;
     }
-    
-        
-    SendMessageW(
-                 State->windows_list,
-                 LB_RESETCONTENT,
-                 0,
-                 0
-                 );
-    ZeroMemory(State->windows, sizeof(State->windows));
-    State->window_count = 0;
 
-    
-    TintSetSelectionText(State, L"(none)", L"(none)");
-    TintSetStatusText(State, L"Status: No selection");
+    SelectionIndex = SendMessageW(
+                                  State->windows_list,
+                                  LB_GETCURSEL,
+                                  0,
+                                  0
+                                  );
+
+    if (SelectionIndex == LB_ERR || SelectionIndex < 0 || SelectionIndex >= State->window_count)
+    {
+        return NULL;
+    }
+
+    if (!IsWindow(State->windows[SelectionIndex].hwnd))
+    {
+        TintSetStatusText(State, L"Status: Selected window no longer exists; refresh the list");
+        return NULL;
+    }
+
+    return &State->windows[SelectionIndex];
 }
 
-static void TintLoadFakeWindows(
-                                tint_app_state *State
-                                )
-{
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Untitled - Notepad - notepad.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Calculator - calc.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Explorer - explorer.exe"
-                 );
-    SendMessageW(
-                 State->windows_list,
-                 LB_ADDSTRING,
-                 0,
-                 (LPARAM)L"Paint - mspaint.exe"
-                 );
-
-    State->windows[0].hwnd = NULL;
-    State->windows[0].pid = 0;
-    lstrcpyW(State->windows[0].title, L"Untitled - Notepad");
-    lstrcpyW(State->windows[0].process_name, L"notepad.exe");
-
-    
-    State->windows[1].hwnd = NULL;
-    State->windows[1].pid = 0;
-    lstrcpyW(State->windows[1].title, L"Calculator");
-    lstrcpyW(State->windows[1].process_name, L"calc.exe");
-    
-    State->windows[2].hwnd = NULL;
-    State->windows[2].pid = 0;
-    lstrcpyW(State->windows[2].title, L"Explorer");
-    lstrcpyW(State->windows[2].process_name, L"explorer.exe");
-    
-    State->windows[3].hwnd = NULL;
-    State->windows[3].pid = 0;
-    lstrcpyW(State->windows[3].title, L"Paint");
-    lstrcpyW(State->windows[3].process_name, L"mspaint.exe");
-
-    State->window_count = 4;
-    SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
-    TintSelectFakeWindow(State, 0);
-}
 
 static void TintSetOpacityFromSlider(
                                      tint_app_state *State
@@ -316,6 +285,7 @@ static void TintSetOpacityFromSlider(
 {
     wchar_t StatusText[64];
     int Percent;
+    tint_window_item *SelectedWindow;
     
     if (State == NULL)
     {
@@ -331,8 +301,69 @@ static void TintSetOpacityFromSlider(
     
     TintSetOpacityPercent(State, Percent);
 
+    SelectedWindow = TintGetSelectedWindow(State);
+    if (SelectedWindow == NULL)
+    {
+        TintSetStatusText(State, L"Status: Select a window first");
+        return;
+    }
+
+    if (!TintApplyOpacityToWindow(SelectedWindow->hwnd, Percent))
+    {
+        TintSetStatusText(State, L"Status: Failed to apply opacity");
+        return;
+    }
+
     wsprintfW(StatusText, L"Status: Opacity %d%%", Percent);
     TintSetStatusText(State, StatusText);
+}
+
+static int TintClampOpacityPercent(int Percent)
+{
+    if (Percent < TINT_MIN_OPACITY_PERCENT)
+    {
+        return TINT_MIN_OPACITY_PERCENT;
+    }
+    if (Percent > TINT_MAX_OPACITY_PERCENT)
+    {
+        return TINT_MAX_OPACITY_PERCENT;
+    }
+
+    return Percent;
+}
+
+static BYTE TintOpacityPercentToAlpha(int Percent)
+{
+    int ClampedPercent = TintClampOpacityPercent(Percent);
+
+    return (BYTE)((ClampedPercent * 255 + 50) / 100);
+}
+
+static BOOL TintApplyOpacityToWindow(HWND Window, int Percent)
+{
+    LONG_PTR ExStyle;
+    BYTE Alpha;
+
+    if (Window == NULL || !IsWindow(Window))
+    {
+        return FALSE;
+    }
+
+    ExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
+
+    if ((ExStyle & WS_EX_LAYERED) == 0)
+    {
+        SetWindowLongPtrW(Window, GWL_EXSTYLE, ExStyle | WS_EX_LAYERED);
+    }
+
+    Alpha = TintOpacityPercentToAlpha(Percent);
+
+    return SetLayeredWindowAttributes(
+                                      Window,
+                                      0,
+                                      Alpha,
+                                      LWA_ALPHA
+                                      );
 }
 
 static BOOL TintShouldIncludeWindow(HWND Window)
@@ -344,6 +375,7 @@ static BOOL TintShouldIncludeWindow(HWND Window)
 
     return TRUE;
 }
+
 
 static void TintGetProcessName(
                                DWORD ProcessId,
@@ -364,9 +396,130 @@ static void TintGetProcessName(
         wcscpy_s(Buffer, BufferCount, L"<unknown>");
         return;
     }
-    
-    wcscpy_s(Buffer, BufferCount, L"<unknown>");
+
+    DWORD Size = BufferCount;
+    if (!QueryFullProcessImageNameW(process, 0, Buffer, &Size))
+    {
+        wcscpy_s(Buffer, BufferCount, L"<unknown>");
+    }
+    else
+    {
+        wchar_t *FileName = wcsrchr(Buffer, L'\\');
+        if (FileName != NULL && FileName[1] != L'\0')
+        {
+            wcscpy_s(Buffer, BufferCount, FileName + 1);
+        }
+    }
+
     CloseHandle(process);
+}
+
+static BOOL CALLBACK TintEnumWindowsCallback(
+                                             HWND Window,
+                                             LPARAM Param
+                                             )
+{
+    tint_app_state *State = (tint_app_state *)Param;
+    DWORD ProcessId = 0;
+    tint_window_item *Item = NULL;
+
+    if (State == NULL)
+    {
+        return FALSE;
+    }
+
+    if (Window == State->main_window)
+    {
+        return TRUE;
+    }
+
+    if (!TintShouldIncludeWindow(Window))
+    {
+        return TRUE;
+    }
+
+    if (State->window_count >= TINT_MAX_WINDOWS)
+    {
+        return FALSE;
+    }
+
+    Item = &State->windows[State->window_count];
+    ZeroMemory(Item, sizeof(*Item));
+
+    Item->hwnd = Window;
+    GetWindowThreadProcessId(Window, &ProcessId);
+    Item->pid = ProcessId;
+
+    GetWindowTextW(
+                   Window,
+                   Item->title,
+                   TINT_MAX_TITLE_LENGTH
+                   );
+
+    TintGetProcessName(
+                       ProcessId,
+                       Item->process_name,
+                       TINT_MAX_PROCESS_NAME_LENGTH
+                       );
+
+    State->window_count += 1;
+
+    return TRUE;
+}
+
+static void TintLoadRealWindows(tint_app_state *State)
+{
+    int Index = 0;
+
+    if (State == NULL)
+    {
+        return;
+    }
+
+    SendMessageW(
+                 State->windows_list,
+                 LB_RESETCONTENT,
+                 0,
+                 0
+                 );
+
+    ZeroMemory(State->windows, sizeof(State->windows));
+    State->window_count = 0;
+
+    EnumWindows(
+                TintEnumWindowsCallback,
+                (LPARAM)State
+                );
+
+    for (Index = 0; Index < State->window_count; ++Index)
+    {
+        wchar_t Line[600];
+        wsprintfW(
+                  Line,
+                  L"%s - %s",
+                  State->windows[Index].title,
+                  State->windows[Index].process_name
+                  );
+
+        SendMessageW(
+                     State->windows_list,
+                     LB_ADDSTRING,
+                     0,
+                     (LPARAM)Line
+                     );
+    }
+
+    if (State->window_count > 0)
+    {
+        SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
+        TintSelectWindow(State, 0);
+        TintSetStatusText(State, L"Status: Real window list loaded");
+    }
+    else
+    {
+        TintSetSelectionText(State, L"(none)", L"(none)");
+        TintSetStatusText(State, L"Status: No windows found");
+    }
 }
 
 
@@ -604,7 +757,7 @@ static void TintCreateMainLayout (
                           );
     TintSetStatusText(State, L"Status: Ready");
 
-    TintLoadFakeWindows(State);
+    TintLoadRealWindows(State);
 }
 
 
@@ -640,7 +793,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
                                                            0,
                                                            0
                                                            );
-                    TintSelectFakeWindow(State, SelectionIndex);
+                    TintSelectWindow(State, SelectionIndex);
                 }
             }
             else if (LOWORD(WParam) == IDC_REFRESH_BUTTON)
@@ -648,9 +801,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
                 
                 if (State != NULL)
                 {
-                    TintClearFakeWindows(State);
-                    TintLoadFakeWindows(State);
-                    TintSetStatusText(State, L"Status: Window list refreshed");
+                    TintLoadRealWindows(State);
                 }
             }
             else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)
