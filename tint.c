@@ -278,6 +278,114 @@ static tint_window_item *TintGetSelectedWindow(tint_app_state *State)
     return &State->windows[SelectionIndex];
 }
 
+static tint_modified_window *TintFindModifiedWindow(
+                                                    tint_app_state *State,
+                                                    HWND Window
+                                                    )
+{
+    if (State == NULL || Window == NULL)
+    {
+        return NULL;
+    }
+
+    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
+    {
+        tint_modified_window *Current = &State->modified_windows[Index];
+        if (Current->in_use && Current->hwnd == Window)
+        {
+            return Current;
+        }
+    }
+
+    return NULL;
+}
+
+static BOOL TintRememberModifiedWindow(
+                                       tint_app_state *State,
+                                       HWND Window,
+                                       LONG_PTR OriginalExStyle
+                                       )
+{
+    if (State == NULL || Window == NULL)
+    {
+        return FALSE;
+    }
+
+    tint_modified_window *Current = TintFindModifiedWindow(State, Window);
+
+    if (Current != NULL)
+    {
+        return TRUE;
+    }
+
+    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
+    {
+        tint_modified_window *Current = &State->modified_windows[Index];
+        if (!Current->in_use)
+        {
+            Current->hwnd = Window;
+            Current->original_ex_style = OriginalExStyle;
+            Current->in_use = TRUE;
+            State->modified_window_count += 1;
+            return TRUE;
+        }
+    }
+
+    return FALSE;
+}
+
+static BOOL TintRestoreWindow(
+                              tint_app_state *State,
+                              HWND Window
+                              )
+{
+    if (State == NULL || Window == NULL)
+    {
+        return FALSE;
+    }
+
+    tint_modified_window *Current = TintFindModifiedWindow(State, Window);
+
+    if (Current == NULL)
+    {
+        return FALSE;
+    }
+
+    if (IsWindow(Window))
+    {
+        SetWindowLongPtrW(Window, GWL_EXSTYLE, Current->original_ex_style);
+    }
+
+    ZeroMemory(Current, sizeof(*Current));
+
+    if (State->modified_window_count > 0)
+    {
+        State->modified_window_count--;
+    }
+
+    return TRUE;
+}
+
+static void TintRestoreAllWindows(
+                                  tint_app_state *State
+                                  )
+{
+    if (State == NULL)
+    {
+        return;
+    }
+
+    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
+    {
+        tint_modified_window *Current = &State->modified_windows[Index];
+
+        if (Current->in_use)
+        {
+            TintRestoreWindow(State, Current->hwnd);
+        }
+    }
+}
+
 
 static void TintSetOpacityFromSlider(
                                      tint_app_state *State
@@ -308,7 +416,7 @@ static void TintSetOpacityFromSlider(
         return;
     }
 
-    if (!TintApplyOpacityToWindow(SelectedWindow->hwnd, Percent))
+    if (!TintApplyOpacityToWindow(State, SelectedWindow->hwnd, Percent))
     {
         TintSetStatusText(State, L"Status: Failed to apply opacity");
         return;
@@ -339,17 +447,26 @@ static BYTE TintOpacityPercentToAlpha(int Percent)
     return (BYTE)((ClampedPercent * 255 + 50) / 100);
 }
 
-static BOOL TintApplyOpacityToWindow(HWND Window, int Percent)
+static BOOL TintApplyOpacityToWindow(
+                                     tint_app_state *State,
+                                     HWND Window,
+                                     int Percent
+                                     )
 {
     LONG_PTR ExStyle;
     BYTE Alpha;
 
-    if (Window == NULL || !IsWindow(Window))
+    if (State == NULL || Window == NULL || !IsWindow(Window))
     {
         return FALSE;
     }
 
     ExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
+
+    if (!TintRememberModifiedWindow(State, Window, ExStyle))
+    {
+        return FALSE;
+    }
 
     if ((ExStyle & WS_EX_LAYERED) == 0)
     {
@@ -775,6 +892,21 @@ LRESULT CALLBACK Win32MainWindowCallback(
     {
         case WM_DESTROY:
         {
+            tint_app_state *State = (tint_app_state *)GetWindowLongPtrW(Window, GWLP_USERDATA);
+
+            if (State != NULL)
+            {
+                TintRestoreAllWindows(State);
+
+                SetWindowLongPtrW(Window, GWLP_USERDATA, 0);
+
+                HeapFree(
+                         GetProcessHeap(),
+                         0,
+                         State
+                         );
+            }
+            
             PostQuitMessage(0);
             break;
         }
@@ -808,14 +940,30 @@ LRESULT CALLBACK Win32MainWindowCallback(
             {
                 if (State != NULL)
                 {
-                    TintSetStatusText(State, L"Status: Restore current clicked");
+                    tint_window_item *SelectedWindow = TintGetSelectedWindow(State);
+                    if (SelectedWindow == NULL)
+                    {
+                        TintSetStatusText(State, L"Status: No window selected");
+                        break;
+                    }
+
+                    BOOL RestoreStatus = TintRestoreWindow(State, SelectedWindow->hwnd);
+                    if (RestoreStatus)
+                    {
+                        TintSetStatusText(State, L"Status: Restored selected window");
+                    }
+                    else
+                    {
+                        TintSetStatusText(State, L"Status: Nothing to restore for selected window");
+                    }
                 }
             }
             else if (LOWORD(WParam) == IDC_RESTORE_ALL_BUTTON)
             {
                 if (State != NULL)
                 {
-                    TintSetStatusText(State, L"Status: Restore all clicked");
+                    TintRestoreAllWindows(State);
+                    TintSetStatusText(State, L"Status: Restored all modified windows");
                 }
             }
             break;
