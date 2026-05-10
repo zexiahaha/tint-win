@@ -51,6 +51,9 @@ typedef struct tint_modified_window
 {
     HWND hwnd;
     LONG_PTR original_ex_style;
+    BOOL originally_layered;
+    BYTE original_alpha;
+    DWORD original_flags;
     BOOL in_use;
 } tint_modified_window;
 
@@ -303,7 +306,10 @@ static tint_modified_window *TintFindModifiedWindow(
 static BOOL TintRememberModifiedWindow(
                                        tint_app_state *State,
                                        HWND Window,
-                                       LONG_PTR OriginalExStyle
+                                       LONG_PTR OriginalExStyle,
+                                       BOOL OriginallyLayered,
+                                       BYTE OriginalAlpha,
+                                       DWORD OriginalFlags
                                        )
 {
     if (State == NULL || Window == NULL)
@@ -325,6 +331,9 @@ static BOOL TintRememberModifiedWindow(
         {
             Current->hwnd = Window;
             Current->original_ex_style = OriginalExStyle;
+            Current->originally_layered = OriginallyLayered;
+            Current->original_alpha = OriginalAlpha;
+            Current->original_flags = OriginalFlags;
             Current->in_use = TRUE;
             State->modified_window_count += 1;
             return TRUE;
@@ -332,6 +341,35 @@ static BOOL TintRememberModifiedWindow(
     }
 
     return FALSE;
+}
+
+static BOOL TintForgetModifiedWindow(
+                                     tint_app_state *State,
+                                     HWND Window
+                                     )
+{
+    tint_modified_window *Current;
+
+    if (State == NULL || Window == NULL)
+    {
+        return FALSE;
+    }
+
+    Current = TintFindModifiedWindow(State, Window);
+
+    if (Current == NULL)
+    {
+        return FALSE;
+    }
+
+    ZeroMemory(Current, sizeof(*Current));
+
+    if (State->modified_window_count > 0)
+    {
+        State->modified_window_count--;
+    }
+
+    return TRUE;
 }
 
 static BOOL TintRestoreWindow(
@@ -354,16 +392,19 @@ static BOOL TintRestoreWindow(
     if (IsWindow(Window))
     {
         SetWindowLongPtrW(Window, GWL_EXSTYLE, Current->original_ex_style);
+
+        if (Current->originally_layered)
+        {
+            SetLayeredWindowAttributes(
+                                       Window,
+                                       0,
+                                       Current->original_alpha,
+                                       Current->original_flags
+                                       );
+        }
     }
 
-    ZeroMemory(Current, sizeof(*Current));
-
-    if (State->modified_window_count > 0)
-    {
-        State->modified_window_count--;
-    }
-
-    return TRUE;
+    return TintForgetModifiedWindow(State, Window);
 }
 
 static void TintRestoreAllWindows(
@@ -454,6 +495,9 @@ static BOOL TintApplyOpacityToWindow(
                                      )
 {
     LONG_PTR ExStyle;
+    BOOL OriginallyLayered;
+    BYTE OriginalAlpha = 255;
+    DWORD OriginalFlags = 0;
     BYTE Alpha;
 
     if (State == NULL || Window == NULL || !IsWindow(Window))
@@ -463,7 +507,32 @@ static BOOL TintApplyOpacityToWindow(
 
     ExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
 
-    if (!TintRememberModifiedWindow(State, Window, ExStyle))
+    OriginallyLayered = ((ExStyle & WS_EX_LAYERED) != 0);
+
+    if (OriginallyLayered)
+    {
+        COLORREF ColorKey = 0;
+
+        if (!GetLayeredWindowAttributes(
+                                        Window,
+                                        &ColorKey,
+                                        &OriginalAlpha,
+                                        &OriginalFlags
+                                        ))
+        {
+            OriginalAlpha = 255;
+            OriginalFlags = 0;
+        }
+    }
+
+    if (!TintRememberModifiedWindow(
+                                    State,
+                                    Window,
+                                    ExStyle,
+                                    OriginallyLayered,
+                                    OriginalAlpha,
+                                    OriginalFlags
+                                    ))
     {
         return FALSE;
     }
@@ -485,11 +554,24 @@ static BOOL TintApplyOpacityToWindow(
 
 static BOOL TintShouldIncludeWindow(HWND Window)
 {
+    wchar_t ClassName[128];
+
     if (Window == NULL || !IsWindowVisible(Window) || GetWindowTextLengthW(Window) == 0)
     {
         return FALSE;
     }
 
+    ClassName[0] = L'\0';
+    GetClassNameW(Window, ClassName, 128);
+
+    if (wcscmp(ClassName, L"Shell_TrayWnd") == 0 ||
+        wcscmp(ClassName, L"Shell_SecondaryTrayWnd") == 0 ||
+        wcscmp(ClassName, L"Progman") == 0 ||
+        wcscmp(ClassName, L"WorkerW") == 0)
+    {
+        return FALSE;
+    }
+    
     return TRUE;
 }
 
@@ -587,10 +669,27 @@ static BOOL CALLBACK TintEnumWindowsCallback(
 static void TintLoadRealWindows(tint_app_state *State)
 {
     int Index = 0;
+    int SelectionIndex = 0;
+    int SelectionToUse = 0;
+    HWND PreviousSelectedWindow = NULL;
 
     if (State == NULL)
     {
         return;
+    }
+
+    SelectionIndex = (int)SendMessageW(
+                                       State->windows_list,
+                                       LB_GETCURSEL,
+                                       0,
+                                       0
+                                       );
+
+    if (SelectionIndex != LB_ERR &&
+        SelectionIndex >= 0 &&
+        SelectionIndex < State->window_count)
+    {
+        PreviousSelectedWindow = State->windows[SelectionIndex].hwnd;
     }
 
     SendMessageW(
@@ -626,11 +725,25 @@ static void TintLoadRealWindows(tint_app_state *State)
                      );
     }
 
+    SelectionToUse = 0;
+
+    if (PreviousSelectedWindow != NULL)
+    {
+        for (Index = 0; Index < State->window_count; Index++)
+        {
+            if (State->windows[Index].hwnd == PreviousSelectedWindow)
+            {
+                SelectionToUse = Index;
+                break;
+            }
+        }
+    }
+
     if (State->window_count > 0)
     {
-        SendMessageW(State->windows_list, LB_SETCURSEL, 0, 0);
-        TintSelectWindow(State, 0);
-        TintSetStatusText(State, L"Status: Real window list loaded");
+        SendMessageW(State->windows_list, LB_SETCURSEL, SelectionToUse, 0);
+        TintSelectWindow(State, SelectionToUse);
+        TintSetStatusText(State, L"Status: Window list refreshed");
     }
     else
     {
