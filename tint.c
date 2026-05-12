@@ -3,6 +3,8 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <wchar.h>
+#include "tint_window_list.h"
+#include "tint_opacity.h"
 
 enum ControlIds
 {
@@ -31,31 +33,7 @@ enum ControlIds
 #define TINT_RIGHT_PANEL_WIDTH 300
 #define TINT_BUTTON_HEIGHT 28
 #define TINT_STATUS_HEIGHT 24
-#define TINT_MIN_OPACITY_PERCENT 20
-#define TINT_MAX_OPACITY_PERCENT 100
-#define TINT_MAX_WINDOWS 512
-#define TINT_MAX_TITLE_LENGTH 260
-#define TINT_MAX_PROCESS_NAME_LENGTH 260
-#define TINT_MAX_MODIFIED_WINDOWS 128
 
-
-typedef struct tint_window_item
-{
-    HWND hwnd;
-    DWORD pid;
-    wchar_t title[TINT_MAX_TITLE_LENGTH];
-    wchar_t process_name[TINT_MAX_PROCESS_NAME_LENGTH];
-} tint_window_item;
-
-typedef struct tint_modified_window
-{
-    HWND hwnd;
-    LONG_PTR original_ex_style;
-    BOOL originally_layered;
-    BYTE original_alpha;
-    DWORD original_flags;
-    BOOL in_use;
-} tint_modified_window;
 
 typedef struct tint_app_state
 {
@@ -282,18 +260,18 @@ static tint_window_item *TintGetSelectedWindow(tint_app_state *State)
 }
 
 static tint_modified_window *TintFindModifiedWindow(
-                                                    tint_app_state *State,
+                                                    tint_modified_window *ModifiedWindows,
                                                     HWND Window
                                                     )
 {
-    if (State == NULL || Window == NULL)
+    if (ModifiedWindows == NULL || Window == NULL)
     {
         return NULL;
     }
 
     for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
     {
-        tint_modified_window *Current = &State->modified_windows[Index];
+        tint_modified_window *Current = &ModifiedWindows[Index];
         if (Current->in_use && Current->hwnd == Window)
         {
             return Current;
@@ -304,7 +282,8 @@ static tint_modified_window *TintFindModifiedWindow(
 }
 
 static BOOL TintRememberModifiedWindow(
-                                       tint_app_state *State,
+                                       tint_modified_window *ModifiedWindows,
+                                       int *ModifiedWindowCount,
                                        HWND Window,
                                        LONG_PTR OriginalExStyle,
                                        BOOL OriginallyLayered,
@@ -312,12 +291,12 @@ static BOOL TintRememberModifiedWindow(
                                        DWORD OriginalFlags
                                        )
 {
-    if (State == NULL || Window == NULL)
+    if (ModifiedWindows == NULL || ModifiedWindowCount == NULL || Window == NULL)
     {
         return FALSE;
     }
 
-    tint_modified_window *Current = TintFindModifiedWindow(State, Window);
+    tint_modified_window *Current = TintFindModifiedWindow(ModifiedWindows, Window);
 
     if (Current != NULL)
     {
@@ -326,7 +305,7 @@ static BOOL TintRememberModifiedWindow(
 
     for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
     {
-        tint_modified_window *Current = &State->modified_windows[Index];
+        tint_modified_window *Current = &ModifiedWindows[Index];
         if (!Current->in_use)
         {
             Current->hwnd = Window;
@@ -335,7 +314,7 @@ static BOOL TintRememberModifiedWindow(
             Current->original_alpha = OriginalAlpha;
             Current->original_flags = OriginalFlags;
             Current->in_use = TRUE;
-            State->modified_window_count += 1;
+            *ModifiedWindowCount += 1;
             return TRUE;
         }
     }
@@ -355,7 +334,7 @@ static BOOL TintForgetModifiedWindow(
         return FALSE;
     }
 
-    Current = TintFindModifiedWindow(State, Window);
+    Current = TintFindModifiedWindow(State->modified_windows, Window);
 
     if (Current == NULL)
     {
@@ -382,7 +361,7 @@ static BOOL TintRestoreWindow(
         return FALSE;
     }
 
-    tint_modified_window *Current = TintFindModifiedWindow(State, Window);
+    tint_modified_window *Current = TintFindModifiedWindow(State->modified_windows, Window);
 
     if (Current == NULL)
     {
@@ -467,26 +446,6 @@ static void TintSetOpacityFromSlider(
     TintSetStatusText(State, StatusText);
 }
 
-static int TintClampOpacityPercent(int Percent)
-{
-    if (Percent < TINT_MIN_OPACITY_PERCENT)
-    {
-        return TINT_MIN_OPACITY_PERCENT;
-    }
-    if (Percent > TINT_MAX_OPACITY_PERCENT)
-    {
-        return TINT_MAX_OPACITY_PERCENT;
-    }
-
-    return Percent;
-}
-
-static BYTE TintOpacityPercentToAlpha(int Percent)
-{
-    int ClampedPercent = TintClampOpacityPercent(Percent);
-
-    return (BYTE)((ClampedPercent * 255 + 50) / 100);
-}
 
 static BOOL TintApplyOpacityToWindow(
                                      tint_app_state *State,
@@ -526,7 +485,8 @@ static BOOL TintApplyOpacityToWindow(
     }
 
     if (!TintRememberModifiedWindow(
-                                    State,
+                                    State->modified_windows,
+                                    &State->modified_window_count,
                                     Window,
                                     ExStyle,
                                     OriginallyLayered,
@@ -552,119 +512,6 @@ static BOOL TintApplyOpacityToWindow(
                                       );
 }
 
-static BOOL TintShouldIncludeWindow(HWND Window)
-{
-    wchar_t ClassName[128];
-
-    if (Window == NULL || !IsWindowVisible(Window) || GetWindowTextLengthW(Window) == 0)
-    {
-        return FALSE;
-    }
-
-    ClassName[0] = L'\0';
-    GetClassNameW(Window, ClassName, 128);
-
-    if (wcscmp(ClassName, L"Shell_TrayWnd") == 0 ||
-        wcscmp(ClassName, L"Shell_SecondaryTrayWnd") == 0 ||
-        wcscmp(ClassName, L"Progman") == 0 ||
-        wcscmp(ClassName, L"WorkerW") == 0)
-    {
-        return FALSE;
-    }
-    
-    return TRUE;
-}
-
-
-static void TintGetProcessName(
-                               DWORD ProcessId,
-                               wchar_t *Buffer,
-                               DWORD BufferCount
-                               )
-{
-    if (Buffer == NULL || BufferCount == 0)
-    {
-        return;
-    }
-
-    Buffer[0] = L'\0';
-
-    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, ProcessId);
-    if (process == NULL)
-    {
-        wcscpy_s(Buffer, BufferCount, L"<unknown>");
-        return;
-    }
-
-    DWORD Size = BufferCount;
-    if (!QueryFullProcessImageNameW(process, 0, Buffer, &Size))
-    {
-        wcscpy_s(Buffer, BufferCount, L"<unknown>");
-    }
-    else
-    {
-        wchar_t *FileName = wcsrchr(Buffer, L'\\');
-        if (FileName != NULL && FileName[1] != L'\0')
-        {
-            wcscpy_s(Buffer, BufferCount, FileName + 1);
-        }
-    }
-
-    CloseHandle(process);
-}
-
-static BOOL CALLBACK TintEnumWindowsCallback(
-                                             HWND Window,
-                                             LPARAM Param
-                                             )
-{
-    tint_app_state *State = (tint_app_state *)Param;
-    DWORD ProcessId = 0;
-    tint_window_item *Item = NULL;
-
-    if (State == NULL)
-    {
-        return FALSE;
-    }
-
-    if (Window == State->main_window)
-    {
-        return TRUE;
-    }
-
-    if (!TintShouldIncludeWindow(Window))
-    {
-        return TRUE;
-    }
-
-    if (State->window_count >= TINT_MAX_WINDOWS)
-    {
-        return FALSE;
-    }
-
-    Item = &State->windows[State->window_count];
-    ZeroMemory(Item, sizeof(*Item));
-
-    Item->hwnd = Window;
-    GetWindowThreadProcessId(Window, &ProcessId);
-    Item->pid = ProcessId;
-
-    GetWindowTextW(
-                   Window,
-                   Item->title,
-                   TINT_MAX_TITLE_LENGTH
-                   );
-
-    TintGetProcessName(
-                       ProcessId,
-                       Item->process_name,
-                       TINT_MAX_PROCESS_NAME_LENGTH
-                       );
-
-    State->window_count += 1;
-
-    return TRUE;
-}
 
 static void TintLoadRealWindows(tint_app_state *State)
 {
@@ -700,12 +547,11 @@ static void TintLoadRealWindows(tint_app_state *State)
                  );
 
     ZeroMemory(State->windows, sizeof(State->windows));
-    State->window_count = 0;
-
-    EnumWindows(
-                TintEnumWindowsCallback,
-                (LPARAM)State
-                );
+    State->window_count = TintLoadWindowItems(
+                                              State->main_window,
+                                              State->windows,
+                                              TINT_MAX_WINDOWS
+                                              );
 
     for (Index = 0; Index < State->window_count; ++Index)
     {
