@@ -3,199 +3,10 @@
 #include <windows.h>
 #include <commctrl.h>
 #include <wchar.h>
-#include "tint_window_list.h"
-#include "tint_opacity.h"
+#include "tint_app.h"
+#include "tint_ui.h"
+#include "tint_view.h"
 
-enum ControlIds
-{
-    IDC_GROUP_WINDOWS = 2001,
-    IDC_WINDOWS_LIST = 2002,
-    IDC_REFRESH_BUTTON = 2003,
-    IDC_GROUP_SELECTION = 2004,
-    IDC_SELECTION_TITLE_LABEL = 2005,
-    IDC_SELECTION_TITLE_VALUE = 2006,
-    IDC_SELECTION_PROCESS_LABEL = 2007,
-    IDC_SELECTION_PROCESS_VALUE = 2008,
-    IDC_GROUP_OPACITY = 2009,
-    IDC_OPACITY_VALUE = 2010,
-    IDC_OPACITY_SLIDER = 2011,
-    IDC_GROUP_ACTIONS = 2012,
-    IDC_RESTORE_CURRENT_BUTTON = 2013,
-    IDC_RESTORE_ALL_BUTTON = 2014,
-    IDC_STATUS_BAR = 2015,
-};
-
-#define TINT_WINDOW_WIDTH 760
-#define TINT_WINDOW_HEIGHT 520
-#define TINT_MARGIN 12
-#define TINT_GAP 12
-#define TINT_LEFT_PANEL_WIDTH 410
-#define TINT_RIGHT_PANEL_WIDTH 300
-#define TINT_BUTTON_HEIGHT 28
-#define TINT_STATUS_HEIGHT 24
-
-
-typedef struct tint_app_state
-{
-    HWND main_window;
-    HWND windows_group;
-    HWND windows_list;
-    HWND refresh_button;
-    HWND selection_group;
-    HWND title_value;
-    HWND process_value;
-    HWND opacity_group;
-    HWND opacity_value;
-    HWND opacity_slider;
-    HWND actions_group;
-    HWND restore_current_button;
-    HWND restore_all_button;
-    HWND status_bar;
-    tint_window_item windows[TINT_MAX_WINDOWS];
-    int window_count;
-    tint_modified_window modified_windows[TINT_MAX_MODIFIED_WINDOWS];
-    int modified_window_count;
-    int current_opacity_percent;
-} tint_app_state;
-
-
-static HWND TintCreateGroupBox(
-                               HWND Parent,
-                               HINSTANCE Instance,
-                               int Id,
-                               LPCWSTR Title,
-                               int X,
-                               int Y,
-                               int Width,
-                               int Height
-                               )
-{
-    return CreateWindowExW(
-                           0,
-                           WC_BUTTONW,
-                           Title,
-                           WS_CHILD | WS_VISIBLE | BS_GROUPBOX,
-                           X, Y, Width, Height,
-                           Parent,
-                           (HMENU) (INT_PTR)Id,
-                           Instance,
-                           NULL
-                           );
-}
-
-static HWND TintCreateButton(
-                             HWND Parent,
-                             HINSTANCE Instance,
-                             int Id,
-                             LPCWSTR Text,
-                             int X,
-                             int Y,
-                             int Width,
-                             int Height
-                             )
-{
-    return CreateWindowExW(
-                           0,
-                           WC_BUTTONW,
-                           Text,
-                           WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
-                           X, Y, Width, Height,
-                           Parent,
-                           (HMENU) (INT_PTR) Id,
-                           Instance,
-                           NULL
-                           );
-}
-
-static HWND TintCreateStatic(
-                             HWND Parent,
-                             HINSTANCE Instance,
-                             int Id,
-                             LPCWSTR Text,
-                             DWORD Style,
-                             int X,
-                             int Y,
-                             int Width,
-                             int Height
-                             )
-{
-    return CreateWindowExW(
-                           0,
-                           WC_STATICW,
-                           Text,
-                           WS_CHILD | WS_VISIBLE | Style,
-                           X, Y, Width, Height,
-                           Parent,
-                           (HMENU) (INT_PTR) Id,
-                           Instance,
-                           NULL
-                           );
-}
-
-static void TintSetSelectionText(
-                                 tint_app_state *State,
-                                 LPCWSTR Title,
-                                 LPCWSTR Process
-                                 )
-{
-    if (State == NULL)
-    {
-        return;
-    }
-
-    SetWindowTextW(State->title_value, Title);
-    SetWindowTextW(State->process_value, Process);
-}
-
-static void TintSetStatusText(
-                              tint_app_state *State,
-                              LPCWSTR Text
-                              )
-{
-    if (State == NULL || State->status_bar == NULL)
-    {
-        return;
-    }
-    SendMessageW(State->status_bar, SB_SETTEXTW, 0, (LPARAM)Text);
-}
-
-static void TintSetOpacityPercent(
-                                  tint_app_state *State,
-                                  int Percent
-                                  )
-{
-    wchar_t Buffer[16];
-
-    if (State == NULL)
-    {
-        return;
-    }
-
-    State->current_opacity_percent = Percent;
-    wsprintfW(Buffer, L"%d%%", Percent);
-    SetWindowTextW(State->opacity_value, Buffer);
-}
-
-static void TintApplyReadOnlySlotStyle(
-                                       HWND Control
-                                       )
-{
-    LONG_PTR Style;
-    LONG_PTR ExStyle;
-
-    Style = GetWindowLongPtrW(Control, GWL_STYLE);
-    ExStyle = GetWindowLongPtrW(Control, GWL_EXSTYLE);
-
-    SetWindowLongPtrW(Control, GWL_STYLE, Style | SS_SUNKEN);
-    SetWindowLongPtrW(Control, GWL_EXSTYLE, ExStyle | WS_EX_STATICEDGE);
-
-    SetWindowPos(
-                 Control,
-                 NULL,
-                 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED
-                 );
-}
 
 static void TintSelectWindow(
                              tint_app_state *State,
@@ -259,153 +70,6 @@ static tint_window_item *TintGetSelectedWindow(tint_app_state *State)
     return &State->windows[SelectionIndex];
 }
 
-static tint_modified_window *TintFindModifiedWindow(
-                                                    tint_modified_window *ModifiedWindows,
-                                                    HWND Window
-                                                    )
-{
-    if (ModifiedWindows == NULL || Window == NULL)
-    {
-        return NULL;
-    }
-
-    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
-    {
-        tint_modified_window *Current = &ModifiedWindows[Index];
-        if (Current->in_use && Current->hwnd == Window)
-        {
-            return Current;
-        }
-    }
-
-    return NULL;
-}
-
-static BOOL TintRememberModifiedWindow(
-                                       tint_modified_window *ModifiedWindows,
-                                       int *ModifiedWindowCount,
-                                       HWND Window,
-                                       LONG_PTR OriginalExStyle,
-                                       BOOL OriginallyLayered,
-                                       BYTE OriginalAlpha,
-                                       DWORD OriginalFlags
-                                       )
-{
-    if (ModifiedWindows == NULL || ModifiedWindowCount == NULL || Window == NULL)
-    {
-        return FALSE;
-    }
-
-    tint_modified_window *Current = TintFindModifiedWindow(ModifiedWindows, Window);
-
-    if (Current != NULL)
-    {
-        return TRUE;
-    }
-
-    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
-    {
-        tint_modified_window *Current = &ModifiedWindows[Index];
-        if (!Current->in_use)
-        {
-            Current->hwnd = Window;
-            Current->original_ex_style = OriginalExStyle;
-            Current->originally_layered = OriginallyLayered;
-            Current->original_alpha = OriginalAlpha;
-            Current->original_flags = OriginalFlags;
-            Current->in_use = TRUE;
-            *ModifiedWindowCount += 1;
-            return TRUE;
-        }
-    }
-
-    return FALSE;
-}
-
-static BOOL TintForgetModifiedWindow(
-                                     tint_app_state *State,
-                                     HWND Window
-                                     )
-{
-    tint_modified_window *Current;
-
-    if (State == NULL || Window == NULL)
-    {
-        return FALSE;
-    }
-
-    Current = TintFindModifiedWindow(State->modified_windows, Window);
-
-    if (Current == NULL)
-    {
-        return FALSE;
-    }
-
-    ZeroMemory(Current, sizeof(*Current));
-
-    if (State->modified_window_count > 0)
-    {
-        State->modified_window_count--;
-    }
-
-    return TRUE;
-}
-
-static BOOL TintRestoreWindow(
-                              tint_app_state *State,
-                              HWND Window
-                              )
-{
-    if (State == NULL || Window == NULL)
-    {
-        return FALSE;
-    }
-
-    tint_modified_window *Current = TintFindModifiedWindow(State->modified_windows, Window);
-
-    if (Current == NULL)
-    {
-        return FALSE;
-    }
-
-    if (IsWindow(Window))
-    {
-        SetWindowLongPtrW(Window, GWL_EXSTYLE, Current->original_ex_style);
-
-        if (Current->originally_layered)
-        {
-            SetLayeredWindowAttributes(
-                                       Window,
-                                       0,
-                                       Current->original_alpha,
-                                       Current->original_flags
-                                       );
-        }
-    }
-
-    return TintForgetModifiedWindow(State, Window);
-}
-
-static void TintRestoreAllWindows(
-                                  tint_app_state *State
-                                  )
-{
-    if (State == NULL)
-    {
-        return;
-    }
-
-    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
-    {
-        tint_modified_window *Current = &State->modified_windows[Index];
-
-        if (Current->in_use)
-        {
-            TintRestoreWindow(State, Current->hwnd);
-        }
-    }
-}
-
 
 static void TintSetOpacityFromSlider(
                                      tint_app_state *State
@@ -436,7 +100,11 @@ static void TintSetOpacityFromSlider(
         return;
     }
 
-    if (!TintApplyOpacityToWindow(State, SelectedWindow->hwnd, Percent))
+    if (!TintApplyOpacityToWindow(
+                                  State->modified_windows,
+                                  &State->modified_window_count,
+                                  SelectedWindow->hwnd,
+                                  Percent))
     {
         TintSetStatusText(State, L"Status: Failed to apply opacity");
         return;
@@ -444,72 +112,6 @@ static void TintSetOpacityFromSlider(
 
     wsprintfW(StatusText, L"Status: Opacity %d%%", Percent);
     TintSetStatusText(State, StatusText);
-}
-
-
-static BOOL TintApplyOpacityToWindow(
-                                     tint_app_state *State,
-                                     HWND Window,
-                                     int Percent
-                                     )
-{
-    LONG_PTR ExStyle;
-    BOOL OriginallyLayered;
-    BYTE OriginalAlpha = 255;
-    DWORD OriginalFlags = 0;
-    BYTE Alpha;
-
-    if (State == NULL || Window == NULL || !IsWindow(Window))
-    {
-        return FALSE;
-    }
-
-    ExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
-
-    OriginallyLayered = ((ExStyle & WS_EX_LAYERED) != 0);
-
-    if (OriginallyLayered)
-    {
-        COLORREF ColorKey = 0;
-
-        if (!GetLayeredWindowAttributes(
-                                        Window,
-                                        &ColorKey,
-                                        &OriginalAlpha,
-                                        &OriginalFlags
-                                        ))
-        {
-            OriginalAlpha = 255;
-            OriginalFlags = 0;
-        }
-    }
-
-    if (!TintRememberModifiedWindow(
-                                    State->modified_windows,
-                                    &State->modified_window_count,
-                                    Window,
-                                    ExStyle,
-                                    OriginallyLayered,
-                                    OriginalAlpha,
-                                    OriginalFlags
-                                    ))
-    {
-        return FALSE;
-    }
-
-    if ((ExStyle & WS_EX_LAYERED) == 0)
-    {
-        SetWindowLongPtrW(Window, GWL_EXSTYLE, ExStyle | WS_EX_LAYERED);
-    }
-
-    Alpha = TintOpacityPercentToAlpha(Percent);
-
-    return SetLayeredWindowAttributes(
-                                      Window,
-                                      0,
-                                      Alpha,
-                                      LWA_ALPHA
-                                      );
 }
 
 
@@ -599,246 +201,6 @@ static void TintLoadRealWindows(tint_app_state *State)
 }
 
 
-static void TintCreateMainLayout (
-                                  HWND Window,
-                                  HINSTANCE Instance,
-                                  tint_app_state *State
-                                  )
-{
-    int client_left = TINT_MARGIN;
-    int client_top = TINT_MARGIN;
-    int left_x = client_left;
-    int right_x = left_x + TINT_LEFT_PANEL_WIDTH + TINT_GAP;
-    int top_y = client_top;
-
-    State->windows_group = TintCreateGroupBox(
-                                              Window,
-                                              Instance,
-                                              IDC_GROUP_WINDOWS,
-                                              L"Windows",
-                                              left_x,
-                                              top_y,
-                                              TINT_LEFT_PANEL_WIDTH,
-                                              430
-                                              );
-
-    State->windows_list = CreateWindowExW(
-                                          WS_EX_CLIENTEDGE,
-                                          WC_LISTBOXW,
-                                          L"",
-                                          WS_CHILD | WS_VISIBLE | WS_TABSTOP | LBS_NOTIFY | WS_VSCROLL | WS_BORDER,
-                                          left_x + 12,
-                                          top_y + 22,
-                                          TINT_LEFT_PANEL_WIDTH - 24,
-                                          350,
-                                          Window,
-                                          (HMENU) (INT_PTR)IDC_WINDOWS_LIST,
-                                          Instance,
-                                          NULL
-                                          );
-
-    State->refresh_button = TintCreateButton(
-                                             Window,
-                                             Instance,
-                                             IDC_REFRESH_BUTTON,
-                                             L"Refresh List",
-                                             left_x + 12,
-                                             top_y + 382,
-                                             120,
-                                             TINT_BUTTON_HEIGHT
-                                             );
-
-    State->selection_group = TintCreateGroupBox(
-                                                Window,
-                                                Instance,
-                                                IDC_GROUP_SELECTION,
-                                                L"Selection",
-                                                right_x,
-                                                top_y,
-                                                TINT_RIGHT_PANEL_WIDTH,
-                                                110
-                                                );
-
-    TintCreateStatic(
-                     Window,
-                     Instance,
-                     IDC_SELECTION_TITLE_LABEL,
-                     L"Title",
-                     0,
-                     right_x + 12,
-                     top_y + 28,
-                     48,
-                     20
-                     );
-
-    State->title_value = TintCreateStatic(
-                                          Window,
-                                          Instance,
-                                          IDC_SELECTION_TITLE_VALUE,
-                                          L"(none)",
-                                          SS_LEFTNOWORDWRAP,
-                                          right_x + 70,
-                                          top_y + 28,
-                                          206,
-                                          20
-                                          );
-
-    TintApplyReadOnlySlotStyle(State->title_value);
-
-    TintCreateStatic(
-                     Window,
-                     Instance,
-                     IDC_SELECTION_PROCESS_LABEL,
-                     L"Process",
-                     0,
-                     right_x + 12,
-                     top_y + 58,
-                     48,
-                     20
-                     );
-
-    State->process_value = TintCreateStatic(
-                                            Window,
-                                            Instance,
-                                            IDC_SELECTION_PROCESS_VALUE,
-                                            L"(none)",
-                                            SS_LEFTNOWORDWRAP,
-                                            right_x + 70,
-                                            top_y + 58,
-                                            206,
-                                            20
-                                            );
-    TintApplyReadOnlySlotStyle(State->process_value);
-
-    State->opacity_group = TintCreateGroupBox(
-                                              Window,
-                                              Instance,
-                                              IDC_GROUP_OPACITY,
-                                              L"Opacity",
-                                              right_x,
-                                              top_y + 122,
-                                              TINT_RIGHT_PANEL_WIDTH,
-                                              110
-                                              );
-
-    TintCreateStatic(
-                     Window,
-                     Instance,
-                     0,
-                     L"Current Opacity",
-                     0,
-                     right_x + 12,
-                     top_y + 150,
-                     100,
-                     20
-                     );
-
-    State->opacity_value = TintCreateStatic(
-                                            Window,
-                                            Instance,
-                                            IDC_OPACITY_VALUE,
-                                            L"100%",
-                                            SS_CENTER,
-                                            right_x + 214,
-                                            top_y + 146,
-                                            58,
-                                            22
-                                            );
-
-    State->opacity_slider = CreateWindowExW(
-                                            0,
-                                            TRACKBAR_CLASSW,
-                                            L"",
-                                            WS_CHILD | WS_VISIBLE | WS_TABSTOP | TBS_AUTOTICKS,
-                                            right_x + 12,
-                                            top_y + 178,
-                                            264,
-                                            30,
-                                            Window,
-                                            (HMENU) (INT_PTR) IDC_OPACITY_SLIDER,
-                                            Instance,
-                                            NULL
-                                            );
-
-    State->actions_group = TintCreateGroupBox(
-                                              Window,
-                                              Instance,
-                                              IDC_GROUP_ACTIONS,
-                                              L"Actions",
-                                              right_x,
-                                              top_y + 244,
-                                              TINT_RIGHT_PANEL_WIDTH,
-                                              88
-                                              );
-
-    State->restore_current_button = TintCreateButton(
-                                                     Window,
-                                                     Instance,
-                                                     IDC_RESTORE_CURRENT_BUTTON,
-                                                     L"Restore Current",
-                                                     right_x + 12,
-                                                     top_y + 272,
-                                                     128,
-                                                     TINT_BUTTON_HEIGHT
-                                                     );
-
-    State->restore_all_button = TintCreateButton(
-                                                 Window,
-                                                 Instance,
-                                                 IDC_RESTORE_ALL_BUTTON,
-                                                 L"Restore All",
-                                                 right_x + 148,
-                                                 top_y + 272,
-                                                 128,
-                                                 TINT_BUTTON_HEIGHT
-                                                 );
-
-    State->status_bar = CreateWindowExW(
-                                        0,
-                                        STATUSCLASSNAMEW,
-                                        L"Status: Ready",
-                                        WS_CHILD | WS_VISIBLE,
-                                        0, 0, 0, 0,
-                                        Window,
-                                        (HMENU) (INT_PTR)IDC_STATUS_BAR,
-                                        Instance,
-                                        NULL
-                                        );
-
-    SendMessageW(
-                 State->opacity_slider,
-                 TBM_SETRANGE,
-                 TRUE,
-                 MAKELONG(
-                          TINT_MIN_OPACITY_PERCENT,
-                          TINT_MAX_OPACITY_PERCENT
-                          )
-                 );
-
-    SendMessageW(
-                 State->opacity_slider,
-                 TBM_SETPOS,
-                 TRUE,
-                 TINT_MAX_OPACITY_PERCENT
-                 );
-
-    TintSetSelectionText(
-                         State,
-                         L"(none)",
-                         L"(none)"
-                         );
-    TintSetOpacityPercent(
-                          State,
-                          TINT_MAX_OPACITY_PERCENT
-                          );
-    TintSetStatusText(State, L"Status: Ready");
-
-    TintLoadRealWindows(State);
-}
-
-
-
-
 LRESULT CALLBACK Win32MainWindowCallback(
                                          HWND Window,
                                          UINT Message,
@@ -855,7 +217,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
 
             if (State != NULL)
             {
-                TintRestoreAllWindows(State);
+                TintRestoreAllWindows(State->modified_windows, &State->modified_window_count);
 
                 SetWindowLongPtrW(Window, GWLP_USERDATA, 0);
 
@@ -906,7 +268,11 @@ LRESULT CALLBACK Win32MainWindowCallback(
                         break;
                     }
 
-                    BOOL RestoreStatus = TintRestoreWindow(State, SelectedWindow->hwnd);
+                    BOOL RestoreStatus = TintRestoreWindow(
+                                                           State->modified_windows,
+                                                           &State->modified_window_count,
+                                                           SelectedWindow->hwnd
+                                                           );
                     if (RestoreStatus)
                     {
                         TintSetStatusText(State, L"Status: Restored selected window");
@@ -921,7 +287,7 @@ LRESULT CALLBACK Win32MainWindowCallback(
             {
                 if (State != NULL)
                 {
-                    TintRestoreAllWindows(State);
+                    TintRestoreAllWindows(State->modified_windows, &State->modified_window_count);
                     TintSetStatusText(State, L"Status: Restored all modified windows");
                 }
             }
@@ -956,6 +322,20 @@ LRESULT CALLBACK Win32MainWindowCallback(
             SetWindowLongPtrW(Window, GWLP_USERDATA, (LONG_PTR)State);
 
             TintCreateMainLayout(Window, Instance, State);
+
+            
+            TintSetSelectionText(
+                                 State,
+                                 L"(none)",
+                                 L"(none)"
+                                 );
+            TintSetOpacityPercent(
+                                  State,
+                                  TINT_MAX_OPACITY_PERCENT
+                                  );
+            TintSetStatusText(State, L"Status: Ready");
+
+            TintLoadRealWindows(State);
             
             break;
         }

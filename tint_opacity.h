@@ -21,4 +21,22 @@ int TintClampOpacityPercent(int Percent);
 
 BYTE TintOpacityPercentToAlpha(int Percent);
 
+BOOL TintRestoreWindow(
+                       tint_modified_window *ModifiedWindows,
+                       int *ModifiedWindowCount,
+                       HWND Window
+                       );
+
+void TintRestoreAllWindows(
+                           tint_modified_window *ModifiedWindows,
+                           int *ModifiedWindowCount
+                           );
+
+BOOL TintApplyOpacityToWindow(
+                              tint_modified_window *ModifiedWindows,
+                              int *ModifiedWindowCount,
+                              HWND Window,
+                              int Percent
+                              );
+
 #endif
