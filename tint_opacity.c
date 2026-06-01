@@ -22,6 +22,42 @@ static tint_modified_window *TintFindModifiedWindow(
     return NULL;
 }
 
+
+static tint_modified_window *TintFindOrCreateModifiedWindow(
+                                                            tint_modified_window *ModifiedWindows,
+                                                            int *ModifiedWindowCount,
+                                                            HWND Window
+                                                            )
+{
+    if (ModifiedWindows == NULL || ModifiedWindowCount == NULL || Window == NULL)
+    {
+        return NULL;
+    }
+    
+    tint_modified_window *Current = TintFindModifiedWindow(ModifiedWindows, Window);
+
+    if (Current != NULL)
+    {
+        return Current;
+    }
+    else {
+        for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
+        {
+            tint_modified_window *Current = &ModifiedWindows[Index];
+            if (!Current->in_use)
+            {
+                ZeroMemory(Current, sizeof(*Current));
+                Current->hwnd = Window;
+                Current->in_use = TRUE;
+                *ModifiedWindowCount += 1;
+                return Current;
+            }
+        }
+    }
+
+    return NULL;
+}
+
 static BOOL TintRememberModifiedWindow(
                                        tint_modified_window *ModifiedWindows,
                                        int *ModifiedWindowCount,
@@ -37,30 +73,25 @@ static BOOL TintRememberModifiedWindow(
         return FALSE;
     }
 
-    tint_modified_window *Current = TintFindModifiedWindow(ModifiedWindows, Window);
+    tint_modified_window *Current = TintFindOrCreateModifiedWindow(ModifiedWindows, ModifiedWindowCount, Window);
 
-    if (Current != NULL)
+    if (Current == NULL)
+    {
+        return FALSE;
+    }
+
+    if (Current->has_opacity_snapshot)
     {
         return TRUE;
     }
 
-    for (int Index = 0; Index < TINT_MAX_MODIFIED_WINDOWS; Index++)
-    {
-        tint_modified_window *Current = &ModifiedWindows[Index];
-        if (!Current->in_use)
-        {
-            Current->hwnd = Window;
-            Current->original_ex_style = OriginalExStyle;
-            Current->originally_layered = OriginallyLayered;
-            Current->original_alpha = OriginalAlpha;
-            Current->original_flags = OriginalFlags;
-            Current->in_use = TRUE;
-            *ModifiedWindowCount += 1;
-            return TRUE;
-        }
-    }
+    Current->original_ex_style = OriginalExStyle;
+    Current->originally_layered = OriginallyLayered;
+    Current->original_alpha = OriginalAlpha;
+    Current->original_flags = OriginalFlags;
+    Current->has_opacity_snapshot = TRUE;
 
-    return FALSE;
+    return TRUE;
 }
 
 static BOOL TintForgetModifiedWindow(
@@ -113,16 +144,27 @@ BOOL TintRestoreWindow(
 
     if (IsWindow(Window))
     {
-        SetWindowLongPtrW(Window, GWL_EXSTYLE, Current->original_ex_style);
-
-        if (Current->originally_layered)
+        if (Current->has_opacity_snapshot)
         {
-            SetLayeredWindowAttributes(
-                                       Window,
-                                       0,
-                                       Current->original_alpha,
-                                       Current->original_flags
-                                       );
+            
+            SetWindowLongPtrW(Window, GWL_EXSTYLE, Current->original_ex_style);
+
+            if (Current->originally_layered)
+            {
+                SetLayeredWindowAttributes(
+                                           Window,
+                                           0,
+                                           Current->original_alpha,
+                                           Current->original_flags
+                                           );
+            }
+        }
+
+        if (Current->has_icon_snapshot)
+        {
+            SendMessageW(Window, WM_SETICON, ICON_SMALL, (LPARAM)Current->original_small_icon);
+            SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
+            Current->icon_is_switched = FALSE;
         }
     }
 
@@ -156,6 +198,83 @@ void TintRestoreAllWindows(
                               );
         }
     }
+}
+
+
+BOOL TintSwitchIconToWindow(
+                            tint_modified_window *ModifiedWindows,
+                            int *ModifiedWindowCount,
+                            HWND Window
+                            )
+{
+    if (ModifiedWindows == NULL || ModifiedWindowCount == NULL || Window == NULL || !IsWindow(Window))
+    {
+        return FALSE;
+    }
+    
+    tint_modified_window *Current = TintFindOrCreateModifiedWindow(ModifiedWindows, ModifiedWindowCount, Window);
+
+    if (Current == NULL)
+    {
+        return FALSE;
+    }
+
+    HICON systemIcon = LoadIcon(NULL, IDI_APPLICATION);
+    if (systemIcon == NULL)
+    {
+        return FALSE;
+    }
+
+    if (!Current->icon_is_switched)
+    {
+        if (!Current->has_icon_snapshot)
+        {
+
+            HICON SmallIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_SMALL2, 0);
+
+            if (SmallIcon == NULL)
+            {
+                SmallIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_SMALL, 0);
+            }
+
+            if (SmallIcon == NULL)
+            {
+                SmallIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
+            }
+
+            if (SmallIcon == NULL)
+            {
+                SmallIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
+            }
+
+            HICON BigIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_BIG, 0);
+
+            if (BigIcon == NULL)
+            {
+                BigIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
+            }
+
+            if (BigIcon == NULL)
+            {
+                BigIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
+            }
+            
+            Current->original_small_icon = SmallIcon;
+            Current->original_big_icon = BigIcon;
+            Current->has_icon_snapshot = TRUE;
+        }
+        
+        SendMessage(Window, WM_SETICON, ICON_SMALL, (LPARAM)systemIcon);
+        SendMessage(Window, WM_SETICON, ICON_BIG, (LPARAM)systemIcon);
+
+        Current->icon_is_switched = TRUE;
+        return TRUE;
+    }
+
+    SendMessageW(Window, WM_SETICON, ICON_SMALL, (LPARAM)Current->original_small_icon);
+    SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
+    Current->icon_is_switched = FALSE;
+    return TRUE;
 }
 
 BOOL TintApplyOpacityToWindow(

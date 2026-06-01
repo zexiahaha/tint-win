@@ -258,13 +258,35 @@ void TintCreateMainLayout (
                                             NULL
                                             );
 
+    State->icon_group = TintCreateGroupBox(
+                                           Window,
+                                           Instance,
+                                           IDC_GROUP_ICON,
+                                           L"Icon",
+                                           right_x,
+                                           top_y + 244,
+                                           TINT_RIGHT_PANEL_WIDTH,
+                                           88
+                                           );
+
+    State->switch_icon_button = TintCreateButton(
+                                                 Window,
+                                                 Instance,
+                                                 IDC_SWITCH_ICON_BUTTON,
+                                                 L"Switch Icon",
+                                                 right_x + 12,
+                                                 top_y + 272,
+                                                 128,
+                                                 TINT_BUTTON_HEIGHT
+                                                 );
+
     State->actions_group = TintCreateGroupBox(
                                               Window,
                                               Instance,
                                               IDC_GROUP_ACTIONS,
                                               L"Actions",
                                               right_x,
-                                              top_y + 244,
+                                              top_y + 244 + 88 + 12,
                                               TINT_RIGHT_PANEL_WIDTH,
                                               88
                                               );
@@ -275,7 +297,7 @@ void TintCreateMainLayout (
                                                      IDC_RESTORE_CURRENT_BUTTON,
                                                      L"Restore Current",
                                                      right_x + 12,
-                                                     top_y + 272,
+                                                     top_y + 272 + 88 + 12,
                                                      128,
                                                      TINT_BUTTON_HEIGHT
                                                      );
@@ -286,7 +308,7 @@ void TintCreateMainLayout (
                                                  IDC_RESTORE_ALL_BUTTON,
                                                  L"Restore All",
                                                  right_x + 148,
-                                                 top_y + 272,
+                                                 top_y + 272 + 88 + 12,
                                                  128,
                                                  TINT_BUTTON_HEIGHT
                                                  );

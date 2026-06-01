@@ -114,6 +114,39 @@ static void TintSetOpacityFromSlider(
     TintSetStatusText(State, StatusText);
 }
 
+static void TintSwitchIcon(tint_app_state *State)
+{
+    wchar_t StatusText[64];
+    tint_window_item *SelectedWindow;
+    
+
+    if (State == NULL)
+    {
+        return;
+    }
+
+    SelectedWindow = TintGetSelectedWindow(State);
+    if (SelectedWindow == NULL)
+    {
+        TintSetStatusText(State, L"Status: Select a window first");
+        return;
+    }
+
+    
+    if (!TintSwitchIconToWindow(
+                                State->modified_windows,
+                                &State->modified_window_count,
+                                SelectedWindow->hwnd
+                                ))
+    {
+        TintSetStatusText(State, L"Status: Failed to switch icon");
+        return;
+    }
+
+    wsprintfW(StatusText, L"Status: Switch icon success");
+    TintSetStatusText(State, StatusText);
+}
+
 
 static void TintLoadRealWindows(tint_app_state *State)
 {
@@ -255,6 +288,13 @@ LRESULT CALLBACK Win32MainWindowCallback(
                 if (State != NULL)
                 {
                     TintLoadRealWindows(State);
+                }
+            }
+            else if (LOWORD(WParam) == IDC_SWITCH_ICON_BUTTON)
+            {
+                if (State != NULL)
+                {
+                    TintSwitchIcon(State);
                 }
             }
             else if (LOWORD(WParam) == IDC_RESTORE_CURRENT_BUTTON)

@@ -15,6 +15,11 @@ typedef struct tint_modified_window
     BYTE original_alpha;
     DWORD original_flags;
     BOOL in_use;
+    BOOL has_opacity_snapshot;
+    HICON original_small_icon;
+    HICON original_big_icon;
+    BOOL has_icon_snapshot;
+    BOOL icon_is_switched;
 } tint_modified_window;
 
 int TintClampOpacityPercent(int Percent);
@@ -31,6 +36,12 @@ void TintRestoreAllWindows(
                            tint_modified_window *ModifiedWindows,
                            int *ModifiedWindowCount
                            );
+
+BOOL TintSwitchIconToWindow(
+                            tint_modified_window *ModifiedWindows,
+                            int *ModifiedWindowCount,
+                            HWND Window
+                            );
 
 BOOL TintApplyOpacityToWindow(
                               tint_modified_window *ModifiedWindows,
