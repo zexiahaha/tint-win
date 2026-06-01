@@ -20,6 +20,10 @@ typedef struct tint_modified_window
     HICON original_big_icon;
     BOOL has_icon_snapshot;
     BOOL icon_is_switched;
+    HICON original_class_small_icon;
+    HICON original_class_big_icon;
+    BOOL has_class_icon_snapshot;
+    BOOL class_icon_is_switched;
 } tint_modified_window;
 
 int TintClampOpacityPercent(int Percent);

@@ -70,6 +70,128 @@ static tint_window_item *TintGetSelectedWindow(tint_app_state *State)
     return &State->windows[SelectionIndex];
 }
 
+static void TintDebugPrintWindowBasicInfo(
+                                          LPCWSTR Label,
+                                          HWND Window
+                                          )
+{
+    wchar_t Title[260];
+    wchar_t ClassName[128];
+    wchar_t Buffer[800];
+    DWORD ProcessId = 0;
+
+    if (Label == NULL)
+    {
+        Label = L"(null label)";
+    }
+
+    if (Window == NULL)
+    {
+        swprintf_s(Buffer, 800, L"[tint-win] %s: HWND=NULL\r\n", Label);
+        OutputDebugStringW(Buffer);
+        return;
+    }
+
+    Title[0] = L'\0';
+    ClassName[0] = L'\0';
+
+    GetWindowTextW(Window, Title, 260);
+    GetClassNameW(Window, ClassName, 128);
+    GetWindowThreadProcessId(Window, &ProcessId);
+
+    swprintf_s(
+               Buffer,
+               800,
+               L"[tint-win] %s: hwnd=%p pid=%1u class=\"%s\" title=\"%s\"\r\n",
+               Label,
+               Window,
+               ProcessId,
+               ClassName,
+               Title
+               );
+
+    OutputDebugStringW(Buffer);
+
+}
+
+static void TintDebugPrintWindowIconInfo(
+                                         LPCWSTR Label,
+                                         HWND Window
+                                         )
+{
+    wchar_t Buffer[800];
+
+    HICON Small2Icon;
+    HICON SmallIcon;
+    HICON BigIcon;
+    HICON ClassSmallIcon;
+    HICON ClassBigIcon;
+
+    if (Label == NULL)
+    {
+        Label = L"(null label)";
+    }
+
+    if (Window == NULL)
+    {
+        swprintf_s(Buffer, 800, L"[tint-win] %s: HWND=NULL\r\n", Label);
+        OutputDebugStringW(Buffer);
+        return;
+    }
+
+    Small2Icon = (HICON)SendMessageW(Window, WM_GETICON, ICON_SMALL2, 0);
+    SmallIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_SMALL, 0);
+    BigIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_BIG, 0);
+    ClassSmallIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
+    ClassBigIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
+
+    swprintf_s(
+               Buffer,
+               800,
+               L"[tint-win] %s icon: small2=%p small=%p big=%p class_small=%p class_big=%p\r\n",
+               Label,
+               Small2Icon,
+               SmallIcon,
+               BigIcon,
+               ClassSmallIcon,
+               ClassBigIcon
+               );
+    OutputDebugStringW(Buffer);
+}
+
+static void TintDebugPrintWindowChain(HWND Window)
+{
+    HWND Root;
+    HWND RootOwner;
+    HWND Owner;
+
+    if (Window == NULL)
+    {
+        OutputDebugStringW(L"[wint-win] Debug window chain: Window=NULL \r\n");
+        return;
+    }
+
+    Root = GetAncestor(Window, GA_ROOT);
+    RootOwner = GetAncestor(Window, GA_ROOTOWNER);
+    Owner = GetWindow(Window, GW_OWNER);
+
+    OutputDebugStringW(L"[tint-win] ---- Window chan debug begin ----\r\n");
+
+    TintDebugPrintWindowBasicInfo(L"selected", Window);
+    TintDebugPrintWindowIconInfo(L"selected", Window);
+    
+    TintDebugPrintWindowBasicInfo(L"root", Root);
+    TintDebugPrintWindowIconInfo(L"root", Root);
+    
+    TintDebugPrintWindowBasicInfo(L"root_owner", RootOwner);
+    TintDebugPrintWindowIconInfo(L"root_owner", RootOwner);
+    
+    TintDebugPrintWindowBasicInfo(L"owner", Owner);
+    TintDebugPrintWindowIconInfo(L"owner", Owner);
+
+    OutputDebugStringW(L"[tint-win] ---- Window chan debug end ----\r\n");
+}
+
 
 static void TintSetOpacityFromSlider(
                                      tint_app_state *State
@@ -131,6 +253,8 @@ static void TintSwitchIcon(tint_app_state *State)
         TintSetStatusText(State, L"Status: Select a window first");
         return;
     }
+
+    TintDebugPrintWindowChain(SelectedWindow->hwnd);
 
     
     if (!TintSwitchIconToWindow(

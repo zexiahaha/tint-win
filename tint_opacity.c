@@ -166,6 +166,14 @@ BOOL TintRestoreWindow(
             SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
             Current->icon_is_switched = FALSE;
         }
+
+        if (Current->has_class_icon_snapshot)
+        {
+            
+            SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)Current->original_class_small_icon);
+            SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)Current->original_class_big_icon);
+            Current->class_icon_is_switched = FALSE;
+        }
     }
 
     return TintForgetModifiedWindow(
@@ -262,18 +270,32 @@ BOOL TintSwitchIconToWindow(
             Current->original_small_icon = SmallIcon;
             Current->original_big_icon = BigIcon;
             Current->has_icon_snapshot = TRUE;
+
+            Current->original_class_small_icon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
+            Current->original_class_big_icon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
+            Current->has_class_icon_snapshot = TRUE;
         }
         
         SendMessage(Window, WM_SETICON, ICON_SMALL, (LPARAM)systemIcon);
         SendMessage(Window, WM_SETICON, ICON_BIG, (LPARAM)systemIcon);
 
+        SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)systemIcon);
+        SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)systemIcon);
+
         Current->icon_is_switched = TRUE;
+        Current->class_icon_is_switched = TRUE;
         return TRUE;
     }
 
     SendMessageW(Window, WM_SETICON, ICON_SMALL, (LPARAM)Current->original_small_icon);
     SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
+
+    
+    SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)Current->original_class_small_icon);
+    SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)Current->original_class_big_icon);
+
     Current->icon_is_switched = FALSE;
+    Current->class_icon_is_switched = FALSE;
     return TRUE;
 }
 
