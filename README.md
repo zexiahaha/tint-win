@@ -2,7 +2,9 @@
 
 [中文](README.zh-CN.md)
 
-A tiny Win32 thing that makes other windows transparent.
+A tiny Win32 thing that makes other windows transparent and can hide
+their taskbar buttons, because apparently Windows needed one more thing to
+be moody about.
 
 This is mostly me poking at C and the Windows API. It lists visible desktop
 windows, lets you pick one, changes its opacity, and tries to put everything
@@ -31,6 +33,8 @@ build\tint.exe
 - lists normal visible desktop windows
 - shows the selected window title and process name
 - applies opacity with a slider
+- hides the selected window's taskbar button
+- toggles that taskbar button back again
 - restores the current window
 - restores all windows touched by the program
 - tries to restore modified windows on exit
@@ -66,6 +70,9 @@ oracle bones and forgot to include the translation.
 
 This uses layered window attributes under the hood. Some windows may not behave
 the way you expect, because Windows desktop apps are Windows desktop apps.
+
+The taskbar hiding trick works by poking extended window styles. That means it
+is not a sacred law of nature, just another small argument with Win32.
 
 If something looks weird, press restore.
 

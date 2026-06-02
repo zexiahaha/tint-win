@@ -20,10 +20,9 @@ typedef struct tint_modified_window
     HICON original_big_icon;
     BOOL has_icon_snapshot;
     BOOL icon_is_switched;
-    HICON original_class_small_icon;
-    HICON original_class_big_icon;
-    BOOL has_class_icon_snapshot;
-    BOOL class_icon_is_switched;
+    LONG_PTR original_taskbar_ex_style;
+    BOOL has_taskbar_snapshot;
+    BOOL taskbar_is_hidden;
 } tint_modified_window;
 
 int TintClampOpacityPercent(int Percent);
@@ -40,6 +39,12 @@ void TintRestoreAllWindows(
                            tint_modified_window *ModifiedWindows,
                            int *ModifiedWindowCount
                            );
+
+BOOL TintHideTaskbarToWindow(
+                             tint_modified_window *ModifiedWindows,
+                             int *ModifiedWindowCount,
+                             HWND Window
+                             );
 
 BOOL TintSwitchIconToWindow(
                             tint_modified_window *ModifiedWindows,

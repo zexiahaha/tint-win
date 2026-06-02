@@ -24,6 +24,7 @@ enum ControlIds
     IDC_STATUS_BAR = 2015,
     IDC_GROUP_ICON = 2016,
     IDC_SWITCH_ICON_BUTTON = 2017,
+    IDC_HIDE_TASKBAR_BUTTON = 2018,
 };
 
 #define TINT_WINDOW_WIDTH 760
@@ -54,6 +55,7 @@ typedef struct tint_app_state
     HWND status_bar;
     HWND icon_group;
     HWND switch_icon_button;
+    HWND hide_taskbar_button;
     tint_window_item windows[TINT_MAX_WINDOWS];
     int window_count;
     tint_modified_window modified_windows[TINT_MAX_MODIFIED_WINDOWS];

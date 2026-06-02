@@ -160,19 +160,25 @@ BOOL TintRestoreWindow(
             }
         }
 
+        if (Current->has_taskbar_snapshot)
+        {
+            LONG_PTR NewExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
+            LONG_PTR TaskbarMask = WS_EX_APPWINDOW | WS_EX_TOOLWINDOW;
+    
+            NewExStyle &= ~TaskbarMask;
+            NewExStyle |= (Current->original_taskbar_ex_style & TaskbarMask);
+    
+            SetWindowLongPtrW(Window, GWL_EXSTYLE, NewExStyle);
+            SetWindowPos(Window, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+            Current->taskbar_is_hidden = FALSE;
+        }
+
         if (Current->has_icon_snapshot)
         {
             SendMessageW(Window, WM_SETICON, ICON_SMALL, (LPARAM)Current->original_small_icon);
             SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
             Current->icon_is_switched = FALSE;
-        }
-
-        if (Current->has_class_icon_snapshot)
-        {
-            
-            SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)Current->original_class_small_icon);
-            SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)Current->original_class_big_icon);
-            Current->class_icon_is_switched = FALSE;
         }
     }
 
@@ -206,6 +212,60 @@ void TintRestoreAllWindows(
                               );
         }
     }
+}
+
+BOOL TintHideTaskbarToWindow(
+                             tint_modified_window *ModifiedWindows,
+                             int *ModifiedWindowCount,
+                             HWND Window
+                             )
+{
+    
+    if (ModifiedWindows == NULL || ModifiedWindowCount == NULL || Window == NULL || !IsWindow(Window))
+    {
+        return FALSE;
+    }
+
+    tint_modified_window *Current = TintFindOrCreateModifiedWindow(ModifiedWindows, ModifiedWindowCount, Window);
+
+    if (Current == NULL)
+    {
+        return FALSE;
+    }
+
+    LONG_PTR ExStyle = GetWindowLongPtrW(Window, GWL_EXSTYLE);
+
+    if (!Current->has_taskbar_snapshot)
+    {
+        Current->original_taskbar_ex_style = ExStyle;
+        Current->has_taskbar_snapshot = TRUE;
+    }
+    
+    if (!Current->taskbar_is_hidden)
+    {
+        LONG_PTR NewExStyle = ExStyle;
+        NewExStyle &= ~WS_EX_APPWINDOW;
+        NewExStyle |= WS_EX_TOOLWINDOW;
+
+        SetWindowLongPtrW(Window, GWL_EXSTYLE, NewExStyle);
+        SetWindowPos(Window, NULL, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        Current->taskbar_is_hidden = TRUE;
+        return TRUE;
+    }
+
+    
+    LONG_PTR NewExStyle = ExStyle;
+    LONG_PTR TaskbarMask = WS_EX_APPWINDOW | WS_EX_TOOLWINDOW;
+    
+    NewExStyle &= ~TaskbarMask;
+    NewExStyle |= (Current->original_taskbar_ex_style & TaskbarMask);
+    
+    SetWindowLongPtrW(Window, GWL_EXSTYLE, NewExStyle);
+    SetWindowPos(Window, NULL, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+    Current->taskbar_is_hidden = FALSE;
+    return TRUE;
 }
 
 
@@ -245,57 +305,24 @@ BOOL TintSwitchIconToWindow(
                 SmallIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_SMALL, 0);
             }
 
-            if (SmallIcon == NULL)
-            {
-                SmallIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
-            }
-
-            if (SmallIcon == NULL)
-            {
-                SmallIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
-            }
-
             HICON BigIcon = (HICON)SendMessageW(Window, WM_GETICON, ICON_BIG, 0);
-
-            if (BigIcon == NULL)
-            {
-                BigIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
-            }
-
-            if (BigIcon == NULL)
-            {
-                BigIcon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
-            }
             
             Current->original_small_icon = SmallIcon;
             Current->original_big_icon = BigIcon;
             Current->has_icon_snapshot = TRUE;
-
-            Current->original_class_small_icon = (HICON)GetClassLongPtrW(Window, GCLP_HICONSM);
-            Current->original_class_big_icon = (HICON)GetClassLongPtrW(Window, GCLP_HICON);
-            Current->has_class_icon_snapshot = TRUE;
         }
         
         SendMessage(Window, WM_SETICON, ICON_SMALL, (LPARAM)systemIcon);
         SendMessage(Window, WM_SETICON, ICON_BIG, (LPARAM)systemIcon);
 
-        SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)systemIcon);
-        SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)systemIcon);
-
         Current->icon_is_switched = TRUE;
-        Current->class_icon_is_switched = TRUE;
         return TRUE;
     }
 
     SendMessageW(Window, WM_SETICON, ICON_SMALL, (LPARAM)Current->original_small_icon);
     SendMessageW(Window, WM_SETICON, ICON_BIG, (LPARAM)Current->original_big_icon);
 
-    
-    SetClassLongPtrW(Window, GCLP_HICONSM, (LONG_PTR)Current->original_class_small_icon);
-    SetClassLongPtrW(Window, GCLP_HICON, (LONG_PTR)Current->original_class_big_icon);
-
     Current->icon_is_switched = FALSE;
-    Current->class_icon_is_switched = FALSE;
     return TRUE;
 }
 

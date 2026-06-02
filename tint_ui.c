@@ -262,7 +262,7 @@ void TintCreateMainLayout (
                                            Window,
                                            Instance,
                                            IDC_GROUP_ICON,
-                                           L"Icon",
+                                           L"Icon & Taskbar",
                                            right_x,
                                            top_y + 244,
                                            TINT_RIGHT_PANEL_WIDTH,
@@ -279,6 +279,17 @@ void TintCreateMainLayout (
                                                  128,
                                                  TINT_BUTTON_HEIGHT
                                                  );
+    
+    State->hide_taskbar_button = TintCreateButton(
+                                           Window,
+                                           Instance,
+                                           IDC_HIDE_TASKBAR_BUTTON,
+                                           L"Toggle Taskbar",
+                                           right_x + 12 + 128 + 8,
+                                           top_y + 272,
+                                           128,
+                                           TINT_BUTTON_HEIGHT
+                                           );
 
     State->actions_group = TintCreateGroupBox(
                                               Window,
